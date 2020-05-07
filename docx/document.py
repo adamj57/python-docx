@@ -93,6 +93,59 @@ class Document(ElementProxy):
         table.style = style
         return table
 
+    def _match_to_runs(self, match, runs):
+        start, end = match.start(), match.end()
+        iterator = map(lambda x: (x[0], len(x[1].text)), enumerate(runs))
+
+        total_len = 0
+
+        start_run = None
+        start_run_pos = None
+
+        end_run = None
+        end_run_pos = None
+
+        for i, text_len in iterator:
+            if total_len <= start < total_len + text_len and start_run is None:
+                start_run = i
+                start_run_pos = start - total_len
+
+            if total_len <= end <= total_len + text_len and end_run is None:
+                end_run = i
+                end_run_pos = end - total_len
+
+            if start_run is not None and end_run is not None:
+                break
+
+            total_len += text_len
+
+        return (start_run, start_run_pos), (end_run, end_run_pos)
+
+    def replace_all(self, restr, sub, tables=True):
+
+        for p in self.paragraphs:
+            combined = "".join(map(lambda x: x.text, p.runs))
+            match = restr.search(combined)
+            while match:
+                s_params, e_params = self._match_to_runs(match, p.runs)
+
+                # delete inbetween
+                for i in range(s_params[0] + 1, e_params[0]):
+                    p.runs[i].text = ""
+
+                if s_params[0] == e_params[0]:
+                    p.runs[s_params[0]].text = p.runs[s_params[0]].text[:s_params[1]] + sub + p.runs[s_params[0]].text[e_params[1]:]
+                else:
+                    # delete end
+                    p.runs[e_params[0]].text = p.runs[e_params[0]].text[e_params[1]:]
+
+                    # delete and substitute start
+                    p.runs[s_params[0]].text = p.runs[s_params[0]].text[:s_params[1]] + sub
+
+                combined = "".join(map(lambda x: x.text, p.runs))
+                match = restr.search(combined)
+
+
     @property
     def core_properties(self):
         """
@@ -191,6 +244,7 @@ class _Body(BlockItemContainer):
     Proxy for ``<w:body>`` element in this document, having primarily a
     container role.
     """
+
     def __init__(self, body_elm, parent):
         super(_Body, self).__init__(body_elm, parent)
         self._body = body_elm
